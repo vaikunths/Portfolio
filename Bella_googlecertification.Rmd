@@ -1,0 +1,189 @@
+---
+title: "Bellabeat Case Study"
+subtitle: "Portfolio Project for Google Data Analytics Certification"
+author: "Vaikunth"
+date: "04/02/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## About this Project
+
+This document is for my Google Data Analytics Certification - *Capstone Project*. Based on the course learning, this project will start from asking/framing a Business problem, Collecting and preparing the data for the same, followed by Analyzing and sharing insights to make a data driven decision. As for the company, **Bellabeat** is a wellness company headquartered in SanFrasisco, which is into health and fitness tackers for Women. We will see here, with the data collected, what can be offered more to the customers. The reason for choosing the study, is that health, fitness and tracking the vital stats is now more of a norm (after COVID) and therefore how analysis is done in such field was necessary for me to understand. I am also assuming that most of us reading this project are well aware of the Case and have gone through few case studies before.
+
+### Ask
+
+One of the Questions/Business Problem is that, *How the latest trends in Wellness Trackers apply to Bellabeat Customers?*
+For this a dataset of **Fitbit** was given. The same can be accessed [here](https://www.kaggle.com/arashnic/fitbit). As the Dataset is explored, we can observe that based on the usage, some insights about how the user can improve few habits can be given. For example, Sleeping can be optimised so that it doesn't negatively impact her health
+
+### Prepare, Process & Analyze
+
+The dataset is in CSV. It was cleaned in both in MsExcel and SQL. Though SQL in BigQuery couldn't load few files (Reasons I am searching). The same was loaded in R and processed as will be shown further. 
+Few targets:
+
+* To find average Sleeping Hours
+
+* To find Average Active hours
+
+* To find whether Sleep boosts Active Hours
+
+* To find how Sleep duration affects Heartrate
+
+##### Datasets Used
+The following Files were used for Analysis (Including Excel, SQL and R):
+
+* daily_Activitymerged
+
+* dailyIntensities_merged
+
+* heartrate_seconds_merged
+
+* sleepDay_merged
+
+#### In Excel
+
+Cleaning in Excel is of course easiest for small data, but linking gets tedious.Few of the data issues handled in Excel and the processing are discussed below: 
+
+* Inconsistent Dates in dailyActivity and dailyIntensities_merged.csv : Used Text to Columns> Delimiter> Choose None> Date Format(MDY)
+
+* Inconsistent DateTime in dailyIntensities_merged.csv : First Created 2 columns next to the Date >Used Text to Columns> Removed Time Instances based on Space> Again  Delimiter>Choose None>Date format(MDY)
+
+* Now both Intensities and Sleep Files can be linked.First Created a column to Merge Date and ID: Syntax: =A2&B2 (In both the Files). This creates a unique column for linking the 2 tables. After that use Vlookup in sleepDay File and look for matching columns in Intensities data
+
+* Now we can see plots of histogram in Excel
+
+#### In SQL and R
+
+The same was tried in SQL and R as well. I will be showing the SQL queries written in R using **sqldf** Library
+
+Following libraries were used in R:
+
+
+```{r loading Libraries, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(tidyr)
+library(tibble)
+library(skimr)
+library(janitor)
+library(Tmisc)
+library(dplyr)
+library(SimDesign)
+library(rmarkdown)
+library(vitae)
+library(sqldf)
+library(odbc)
+library(dbplyr)
+library(lubridate)
+```
+
+
+
+###### To make Histograms
+
+For this I have used the merged and Cleaned Excel File. (The same can and has been done for Heartrate Data in SQL)
+
+```{r fig.height=4, fig.width=4, message=FALSE, warning=FALSE}
+sleep_activity <- read_csv("sleepDay_foruse.csv")
+hist(sleep_activity$Activehours, xlab="Active hours")
+hist(sleep_activity$Sleephours, xlab="Sleep hours")
+```
+
+Now the histograms show that the average active hours is around 4.5hrs (3-5 hrs) and the Average Sleeping time is around 8hrs (~6-9 hrs). **But let's check whether the average Sleeping time of 8 hrs result in higher productive Hours!**
+
+Further we will first check the data that all users have logged in religiously so as to make sure the data is normal
+
+```{r message=FALSE, warning=FALSE}
+ggplot(data=sleep_activity)+ geom_point(mapping=aes(x=Sleephours, y=Activehours))+facet_wrap(~Id)
+```
+
+
+Here it can be seen that many users have very low data. Only if the data is continuous for few days, can it be used to come for fruitful decisions (* Though some data is eliminated, not much impact is there on the final outcome)
+
+We will filter inconsistent data like total hours not coming close to 24 or Total logs less than 15 days
+
+```{r message=FALSE, warning=FALSE}
+sleep_activity2 <- sleep_activity %>%
+  mutate(totalwakehours=Activehours+Sleephours+Idlehours)
+
+pattern_check <-sleep_activity2 %>% 
+  filter(totalwakehours>22) %>% 
+  filter(totalwakehours<25) %>% 
+  group_by(Id) %>% 
+  filter(n()>15)
+
+ggplot(data=pattern_check)+ geom_point(mapping=aes(x=Sleephours, y=Activehours))+facet_wrap(~Id)
+```
+
+Now we have reduced the number of People so that erroneous data can be eliminated.(The above part can be an issue in sampling ethics, but that can be consulted with the experts, or left as it is also) So Let's check the variation in Active hours based on Sleep Patterns:
+
+```{r message=FALSE, warning=FALSE}
+ggplot(data=pattern_check)+geom_point(mapping=aes(x=Sleephours,y=Activehours))+geom_smooth(mapping=aes(x=Sleephours, y=Activehours))
+```
+
+**The above data helps us show that the active hours are highest when the sleep is between ~ 6-8 hrs**
+
+Now Let's move on to Cleaning in SQL in R and joining
+
+We want to next analyse how the Sleep affects the heartrate of a person. Such that we can give customers feedback about the higher/lower risks of not taking rest
+
+We will first Clean and Load the SleepDay Data
+
+```{r message=FALSE, warning=FALSE}
+again_sleepDay <- read_csv("sleepDay_merged.csv")
+again_sleepDay$SleepDay <- mdy_hms(again_sleepDay$SleepDay)
+again_sleepDay$SleepDay <- as_date(again_sleepDay$SleepDay)
+```
+
+
+Then will use the 'mammoth' Heartrate_seconds_merged data for this purpose:
+
+```{r message=FALSE, warning=FALSE}
+heartrate <- read_csv("heartrate_seconds_merged.csv")
+heartrate$Time <- mdy_hms(heartrate$Time)
+heartrate$Time <- as_date(heartrate$Time)
+```
+
+Now Let's Join the 2 Tables so that we can have average Heartrate per day and the sleep duration for the same
+
+```{r message=FALSE, warning=FALSE}
+heartrate_check <-sqldf("
+                        SELECT heartrate.Id AS HId, heartrate.Time, heartrate.Value, sleep.TotalMinutesAsleep
+                        FROM heartrate
+                        JOIN again_sleepDay as sleep
+                        ON heartrate.Time = sleep.SleepDay AND
+                        heartrate.Id=sleep.Id
+                        ")
+
+heartrateperday <- sqldf("
+                             SELECT HId,Time, AVG(Value) AS Avg_beat, TotalMinutesAsleep
+                             FROM heartrate_check
+                            GROUP BY Time
+                         ")
+```
+
+
+Then Let's Plot the Trend of Sleep Duration vs HeartRate
+
+```{r message=FALSE, warning=FALSE}
+ggplot(data=heartrateperday)+geom_point(mapping=aes(x=TotalMinutesAsleep, y=Avg_beat))+geom_smooth(mapping=aes(x=TotalMinutesAsleep, y=Avg_beat))
+
+```
+
+
+#### Share & Act
+
+Based on the Analysis, would like to share following recommendations:
+
+* Bellabeat App can suggest sleeping duration based on the level and need of highly active duration
+
+* It can generate reminders as to sleep deprivation or excess of it has been having detrimental effects and increase in the Heartrate 
+
+* Further with continuous online data, it can help users identify the right amount of Sleep, activity and excercise for a healthy body
+
+* Also with a community environment of the app, it can help people compare their fitness so as to create a Healthy culture
+
+
+##### Thanks
